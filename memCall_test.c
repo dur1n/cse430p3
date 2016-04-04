@@ -1,5 +1,3 @@
-// mem_user.c test program
-
 #include <linux/unistd.h>
 #include <linux/stdio.h>
 
@@ -12,9 +10,9 @@ main(int argc, char *argv[]) {
 	long address = syscall(__NR_my_syscall, pid, addr);
 
 	if (address == -1)
-		printf("That page is not available.\n");
+		printf("page is not available.\n");
 	else
-		printf("The address is %ld.", address);
+		printf("address is %ld.", address);
 
 	return 0;
 }

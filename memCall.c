@@ -14,7 +14,7 @@
 #include <linux/memcontrol.h>
 #include <linux/mmu_notifier.h>
 #include <linux/kallsyms.h>
-#include <linux/swapops.h>
+#include <linux/swap.h>
 #include <linux/elf.h>
 #include <linux/gfp.h>
 #include <asm/io.h>
@@ -32,8 +32,14 @@ asmlinkage long sys_my_syscall(int pid, long addr){
 	spinlock_t *ptl;
 	pte_t *ptep = NULL
 	pte_t pte;
+	swp_entry_t swp;
 
 	struct task_struct *task;
+	unsigned long pfn_pframe; // need unsigned to logical shift will work correctly
+	unsigned long offset;
+	unsigned long offs_shifted;
+	unsigned long physAddr;
+	int shift = 12;
 
 	// loop each of the tasks
 	for_each_process(task){
@@ -41,17 +47,17 @@ asmlinkage long sys_my_syscall(int pid, long addr){
 
 			// checks for valid page table in the page global Directory
 			pgd = pgd_offset(task->mm, addr);
-    		if (pgd == NULL || pgd_none(*pgd) || unlikely(pgd_bad(*pgd))) 
+    		if (pgd == NULL || pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) 
 				return -1;
 
 			// checks for valid page table in the page upper Directory
 			pud = pud_offset(pgd, addr);
-			if (pud == NULL || pud_none(*pud) || unlikely(pud_bad(*pud))){
+			if (pud == NULL || pud_none(*pud) || unlikely(pud_bad(*pud))
 				return -1;
 
 			// checks for valid page table in the page middle Directory
 			pmd = pmd_offset(pud, addr);
-			if (pmd == NULL || pmd_none(*pmd) || unlikely(pmd_bad(*pmd))){
+			if (pmd == NULL || pmd_none(*pmd) || unlikely(pmd_bad(*pmd))
 				return -1;
 
 			// checks for valid page table 
@@ -68,13 +74,18 @@ asmlinkage long sys_my_syscall(int pid, long addr){
 			if (!pte_present(pte)){
 				if (pte_none(pte))
 					return -1;
-				return pte_pfn(pte);
+				else {  
+					swp = pte_to_swp_entry(pte); // swap offset
+					printk(KERN_INFO"swap: 0x%lX\n",swp ); // testing
+					return swp_offset(swp);
+				}
 			}
-			/* First obtain the physical page frame number by pte_pfn(). 
-			Then obtain the offset address inside a page from the virtual address, 
-			i.e the offset is just the lower 12 bits of the virtual address on 32 bit machine. 
-			After that you can build the physical address by shift the pfn left 
-			by 12 bits and put the offset 12 bits there. */
+			/* From discusion board: First obtain the physical page frame number 
+			by pte_pfn(). Then obtain the offset address inside a page from the 
+			virtual address, i.e the offset is just the lower 12 bits of the 
+			virtual address on 32 bit machine. After that you can build the 
+			physical address by shift the pfn left  by 12 bits and put the 
+			offset 12 bits there. */
 			else {
 				pte_pfn(pte); 
 				// not sure how to translate: 
@@ -82,7 +93,11 @@ asmlinkage long sys_my_syscall(int pid, long addr){
 				// SHIFT LEFT 12 bits
 				// add last 12 bits of virtual address
 				// to the memory address of pte
-				
+				pfn_pframe= pte_pfn(pte); 	// page frame
+				offset = (addr & 0x00000FFF); // obtain the offset address 
+				offs_shifted = pfn_pframe << shift;
+				printk(KERN_INFO"pfn_pframe:%lX  offset:%lX  swp:%lX\n",pfn_pframe,offset, swp ); // testing
+				physAddr = // TODO 
 				return physAddr;				
 			}
 		}

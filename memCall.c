@@ -24,7 +24,7 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
-asmlinkage long sys_my_syscall(int pid, long addr){
+asmlinkage long sys_my_syscall(int pid, unsigned long addr){
 
 	pgd_t *pgd;
 	pud_t *pud;
@@ -47,7 +47,7 @@ asmlinkage long sys_my_syscall(int pid, long addr){
 
 			// checks for valid page table in the page global Directory
 			pgd = pgd_offset(task->mm, addr);
-    		if (pgd == NULL || pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) 
+    			if (pgd == NULL || pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) 
 				return -1;
 
 			// checks for valid page table in the page upper Directory

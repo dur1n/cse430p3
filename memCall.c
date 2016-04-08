@@ -87,12 +87,6 @@ asmlinkage long sys_my_syscall(int pid, unsigned long addr){
 			physical address by shift the pfn left  by 12 bits and put the 
 			offset 12 bits there. */
 			else {
-				pte_pfn(pte); 
-				// not sure how to translate: 
-				// mem address
-				// SHIFT LEFT 12 bits
-				// add last 12 bits of virtual address
-				// to the memory address of pte
 				pfn_pframe= pte_pfn(pte); 	// page frame
 				offset = (addr & 0x00000FFF); // obtain the offset address 
 				offs_shifted = pfn_pframe << shift;

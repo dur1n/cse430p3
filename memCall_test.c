@@ -7,7 +7,7 @@
 main(int argc, char *argv[]) {
 {
     int pid = atoi(argv[1]);  // Converting a string argument to an integer 
-    int addr = atoi(argv[2]);  
+    unsigned long addr = atoi(argv[2]);  
 	long address = syscall(__NR_my_syscall, pid, addr);
 	if (address == -1)
 		printf("page is not available.\n");

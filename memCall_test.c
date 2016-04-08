@@ -1,5 +1,4 @@
-// mem_user.c test program
-
+// memcall_test.c 
 #include <linux/unistd.h>
 #include <linux/stdio.h>
 
@@ -17,5 +16,3 @@ main(int argc, char *argv[]) {
 		printf("PID:%d\tPhysical Address:0x%lx.\n", pid, address);
 	return 0;
 }
-
-//int main (int argc, char* argv[])

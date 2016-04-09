@@ -47,36 +47,34 @@ asmlinkage long sys_my_syscall(int pid, unsigned long addr){
 
 			// checks for valid page table in the page global Directory
 			pgd = pgd_offset(task->mm, addr);
-    			if (pgd == NULL || pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) 
+    			if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) 
 				return -1;
 
 			// checks for valid page table in the page upper Directory
 			pud = pud_offset(pgd, addr);
-			if (pud == NULL || pud_none(*pud) || unlikely(pud_bad(*pud))
+			if (pud_none(*pud) || unlikely(pud_bad(*pud))
 				return -1;
 
 			// checks for valid page table in the page middle Directory
 			pmd = pmd_offset(pud, addr);
-			if (pmd == NULL || pmd_none(*pmd) || unlikely(pmd_bad(*pmd))
+			if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd))
 				return -1;
 
-			// checks for valid page table 
+
 			ptep = pte_offset_map_lock(task->mm, pmd, addr, &ptl);
-			if (ptep == NULL || pte_none(*ptep) || ptl == NULL)
-				return -1;
-				
 			/* If the page is not present, i.e. pte_present() returns false, 
 			then you need to figure out whether the page is not allocated and
 			mapped at all, or it is swapped out, by testing pte_none(). 
 			If it is swapped out, just return the value of pte. 
 			That value is the swap id.*/
 			pte = *ptep;
+			// checks for valid page table 
 			if (!pte_present(pte)){
 				if (pte_none(pte))
 					return -1;
 				else {  
 					swp = pte_to_swp_entry(pte); // swap offset
-					printk(KERN_INFO"swap: 0x%lX\n",swp ); // testing
+					//printk(KERN_INFO"swap: 0x%lX\n",swp ); // testing
 					return swp_offset(swp);
 				}
 			}
@@ -87,11 +85,17 @@ asmlinkage long sys_my_syscall(int pid, unsigned long addr){
 			physical address by shift the pfn left  by 12 bits and put the 
 			offset 12 bits there. */
 			else {
+				// not sure how to translate: 
+				// mem address
+				// SHIFT LEFT 12 bits
+				// add last 12 bits of virtual address
+				// to the memory address of pte
 				pfn_pframe= pte_pfn(pte); 	// page frame
 				offset = (addr & 0x00000FFF); // obtain the offset address 
 				offs_shifted = pfn_pframe << shift;
-				printk(KERN_INFO"pfn_pframe:%lX  offset:%lX  swp:%lX\n",pfn_pframe,offset, swp ); // testing
-				physAddr = // TODO 
+				//printk(KERN_INFO"pfn_pframe:%lX  offset:%lX  swp:%lX\n",pfn_pframe,offset, swp ); // testing
+
+				physAddr = offs_shifted|offset;
 				return physAddr;				
 			}
 		}

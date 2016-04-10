@@ -1,14 +1,15 @@
-// memcall_test.c 
 #include <linux/unistd.h>
-#include <linux/stdio.h>
-
+#include <stdlib.h>
+#include <stdio.h>
 #define __NR_my_syscall 359
 
+
 main(int argc, char *argv[]) {
-{
-    int pid = atoi(argv[1]);  // Converting a string argument to an integer 
-    unsigned long addr = atoi(argv[2]);  
+	char *c;
+    	int pid = atoi(argv[1]);  // Converting a string argument to an integer 
+    	unsigned long addr = strtoul(argv[2], &c, 16); // strtoul() convert into long
 	long address = syscall(__NR_my_syscall, pid, addr);
+
 	if (address == -1)
 		printf("page is not available.\n");
 	else

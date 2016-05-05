@@ -1,0 +1,214 @@
+#include <linux/module.h>	/* Needed by all modules */
+#include <linux/kernel.h>	/* Needed for KERN_INFO */
+#include <linux/sched.h>
+//#include <linux/tty.h> 
+//#include <linux/jiffies.h>
+//#include <linux/slab.h>
+//#include <linux/list.h>
+//#include <stdbool.h>
+#include <linux/delay.h>
+//#include <linux/semaphore.h>
+#include <linux/kthread.h>
+#include <linux/mm.h>
+//#include <linux/mm_types.h>
+#include <linux/shmem_fs.h>
+#include <asm/pgtable.h>
+//#include <linux/swap.h>
+#include <linux/spinlock.h>
+#include <asm/page.h>
+//#include <asm/pgtable_types.h>
+//#include <linux/swapops.h>
+
+
+//forward declarations: 
+//void countChildren(struct task_struct *myTask);
+//void fork_detect(void);
+
+//global variable
+struct task_struct *victim;
+pgd_t *pgd; 
+pud_t *pud;
+pmd_t *pmd; 
+spinlock_t *ptl;
+pte_t *ptep, pte; 
+struct task_struct *search_kthread; 
+struct task_struct *kill_kthread;
+
+
+/*This function goes through the page table, and gets the pte. 
+Then, you want to check if the pte_young(), meaning is it present 
+and has it been accessed. If it's been accessed, you want to clear 
+it. The way you check if it's been accessed is through the 
+access bit. That's what test_and_clear is checking. Has this page 
+been accessed before? Then it's address bit will be set to 1. But, 
+you want to calculate the working set size at each second. The 
+working set size at each second is basically how much memory 
+and pages or whatnot the program will need that second. So you
+must clear the bit so that you can get the working set size 
+for only the time interval of 1 seconds. For example, you might
+have used a page a long time ago, and then the access bit would 
+have been set to 1. If you never cleared the bit before calculating 
+the working set size, you would include in the working set size 
+pages that you aren't using that second. 
+
+Anyway, the test_and_clear() method returns the previous value 
+of the access bit. So if it was 1 and you cleared it to be 0,
+then you need to update it as done in the second if statement. 
+If it was already 0, then no update needs to be made. 
+
+Then, you just return a "yes/no" whether or not that pte was cleared. 
+*/
+
+int returnPteAndTestYoung(struct mm_struct *mm, unsigned long virtAddress, struct vm_area_struct *vma)
+{
+	int ret = 0;
+
+	pgd = pgd_offset(mm,virtAddress);
+	if(pgd_none(*pgd) || unlikely(pgd_bad(*pgd)) )
+	{
+		return -1; //meaning that the pgd is invalid 
+	}
+	pud = pud_offset(pgd,virtAddress);
+	if(pud_none(*pud) || unlikely(pud_bad(*pud)))
+	{
+		return -1; //invalid 
+	}			
+		
+	pmd = pmd_offset(pud,virtAddress);
+	if(pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
+	{
+		return -1; //invalid 
+	}	
+	
+	
+	ptep = pte_offset_map_lock(mm, pmd, virtAddress,&ptl);
+	
+
+
+
+	if(pte_young(*ptep))   
+	{
+		ret = test_and_clear_bit(_PAGE_BIT_ACCESSED, (unsigned long *) &ptep->pte); 
+	}
+	if(ret)  
+	{
+		pte_update(vma->vm_mm,virtAddress,ptep); 
+	}
+
+	pte_unmap_unlock(ptep,ptl); 
+
+	return ret;  
+
+}
+
+/*
+The travrseVma function goes through all the vma's, and then 
+gets the answer as to wether the access bit was 1. If the access
+bit was 1, that means that it was used in the past second and 
+you want to increment the WSS of that proccess by 1. Then 
+you want to increment the total WSS++ of all the processes. 
+
+Thrashing happens when there isn't enough main mermory to keep 
+all the pages that a program needs, and so the CPU will have to 
+go back and access the backing store to pull out pages, and then 
+the CPU will need other pages, so this process goes on forever. 
+totalWSS is the total amount of pages that the program needs. 
+I'm assuming that the totalram_pages is the total 
+amount of pages to be able to be stored on the ram or 
+something. If more than 90% of the page capacity is being
+used by a program, then thrashing happens. So, you could 
+check for that 90% as totalWSS/total_ram_pages > .9. But 
+the problem with that is that the kernel has problems with 
+dividing because apparently it can't trap itself... whatever 
+that means. So in any case, just switch the logic around 
+and have (totalWSS/total_ram_pages) > (9/10) and multiple
+the demonimators. 
+*/
+
+void traverseVma(void)
+{
+	
+	struct vm_area_struct *vma = 0;
+	unsigned long vpage;
+	int ret;
+	struct task_struct *pTask;
+	int totalWSS = 0;
+	
+	for_each_process(pTask)
+	{
+		int WSS = 0;
+		if(pTask->mm && pTask->mm->mmap)
+		{
+			for(vma = pTask->mm->mmap; vma; vma = vma->vm_next)
+			{	 
+				if(vma->vm_flags & VM_IO)
+				{
+					continue;
+				}
+				for(vpage = vma->vm_start; vpage < vma->vm_end; vpage += PAGE_SIZE)
+				{
+					ret = returnPteAndTestYoung(pTask->mm,vpage,vma);
+					if(ret==1)
+					{
+						
+						WSS++;
+						totalWSS++;
+					}					
+				}
+			}
+			printk(KERN_INFO "This is the working set size of the process:\t%d\t%d\n",pTask->pid,WSS);
+		}
+	}
+	if(totalWSS*10 > 9*totalram_pages)
+	{
+		printk(KERN_INFO "KERNEL ALERT!!!! D; ");
+	} 
+
+	printk(KERN_INFO "[Total WSS]:\t%d\n",totalWSS);
+}
+
+/*
+How to execute: you should download jump_pages.c and then run that.
+Depending on how much memory you give your machine, you're going to
+need different page thresholds to get it thrashing. So, to make it 
+easier you should probably just set your VM to 1 GB. So then, check
+numbers like 100000,110000,150000, and it should be thrashing around 
+200000 or something I think. The way you know that the output is 
+right is that it will have a WSS around 30 more than the humber of 
+pages you give it because you are going to need that many extra 
+pages for overhead. 
+*/
+
+
+int wssFunction(void *data) //void *data
+{
+	while(!kthread_should_stop())
+	{
+		traverseVma();
+		msleep(1000);
+	}
+	return 0;
+	
+}
+
+
+int init_module(void)
+{
+
+	search_kthread = kthread_run(&wssFunction, NULL, "my_search_kthread");
+	//kill_kthread = kthread_run(&fork_killer, (void*) &time_for_sleep, "kill_kthread");
+	/* 
+	 * A non 0 return means init_module failed; module can't be loaded. 
+	 */
+	return 0;
+}
+
+
+void cleanup_module(void)
+{
+	//do clean up stuff... 
+	kthread_stop(search_kthread);
+	//kthread_stop(kill_kthread);
+}
+
+MODULE_LICENSE("GPL");
